@@ -910,3 +910,33 @@ func TestReconcileDeletionSharedVPC(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractNLBName(t *testing.T) {
+	testCases := []struct {
+		name     string
+		hostname string
+		expected string
+	}{
+		{
+			name:     "When standard NLB hostname it should extract name without hyphens",
+			hostname: "a1b2c3d4e5f6g7-1234567890abcdef.elb.us-east-1.amazonaws.com",
+			expected: "a1b2c3d4e5f6g7",
+		},
+		{
+			name:     "When EKS Auto Mode NLB hostname it should extract full name with hyphens",
+			hostname: "k8s-clusters-kubeapis-db6fee3a62-8008741421d14306.elb.us-east-1.amazonaws.com",
+			expected: "k8s-clusters-kubeapis-db6fee3a62",
+		},
+		{
+			name:     "When hostname has no hyphens it should return the first label as-is",
+			hostname: "somename.elb.us-east-1.amazonaws.com",
+			expected: "somename",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			g := NewWithT(t)
+			g.Expect(extractNLBName(tc.hostname)).To(Equal(tc.expected))
+		})
+	}
+}

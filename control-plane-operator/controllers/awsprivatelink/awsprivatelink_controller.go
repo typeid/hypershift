@@ -170,7 +170,7 @@ func (r *PrivateServiceObserver) Reconcile(ctx context.Context, req ctrl.Request
 			Namespace: r.HCPNamespace,
 		},
 	}
-	lbName := strings.Split(strings.Split(svc.Status.LoadBalancer.Ingress[0].Hostname, ".")[0], "-")[0]
+	lbName := extractNLBName(svc.Status.LoadBalancer.Ingress[0].Hostname)
 	if _, err := r.CreateOrUpdate(ctx, r, awsEndpointService, func() error {
 		awsEndpointService.Spec.NetworkLoadBalancerName = lbName
 		if hcp.Spec.Platform.AWS != nil {
@@ -182,6 +182,31 @@ func (r *PrivateServiceObserver) Reconcile(ctx context.Context, req ctrl.Request
 	}
 	r.log.Info("reconcile complete", "request", req)
 	return ctrl.Result{}, nil
+}
+
+// extractNLBName extracts the NLB name from its DNS hostname.
+//
+// AWS NLB DNS format is "{name}-{id}.elb.{region}.amazonaws.com"
+// where {name} is the value passed to CreateLoadBalancer and {id} is an
+// AWS-assigned hex suffix.
+// Ref: https://docs.aws.amazon.com/elasticloadbalancing/latest/network/network-load-balancers.html#dns-name
+//
+// The in-tree cloud provider generates hyphen-free names ("a" + UID),
+// but the AWS LB Controller (EKS Auto Mode) uses "k8s-{ns}-{svc}-{hash}".
+// We strip only the last dash-delimited segment (the AWS-assigned ID)
+// because {id} is always hex (no hyphens), as shown in every AWS API
+// example and required structurally — since {name} may contain hyphens,
+// a hyphenated {id} would make the format ambiguous.
+//
+// In-tree name generation: https://github.com/kubernetes/cloud-provider/blob/v0.32.3/cloud.go#L89-L98
+// AWS LB Controller name generation: https://github.com/kubernetes-sigs/aws-load-balancer-controller/blob/v2.12.0/pkg/service/model_build_load_balancer.go#L591-L608
+func extractNLBName(hostname string) string {
+	firstLabel := strings.Split(hostname, ".")[0]
+	lastDash := strings.LastIndex(firstLabel, "-")
+	if lastDash == -1 {
+		return firstLabel
+	}
+	return firstLabel[:lastDash]
 }
 
 // errDependencyViolation is returned when AWS reports a DependencyViolation,
