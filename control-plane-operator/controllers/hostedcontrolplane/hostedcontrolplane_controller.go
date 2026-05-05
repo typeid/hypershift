@@ -1744,17 +1744,26 @@ func (r *HostedControlPlaneReconciler) reconcilePKI(ctx context.Context, hcp *hy
 			return fmt.Errorf("failed to reconcile %s secret: %w", awsPodIdentityWebhookServingCert.Name, err)
 		}
 
-		// AWS EBS CSI driver operator serving cert
-		awsEBSCsiDriverOperatorServingCert := manifests.AWSEBSCsiDriverOperatorServingCert(hcp.Namespace)
-		awsEBSCsiDriverOperatorService := manifests.AWSEBSCsiDriverOperatorMetricsService(hcp.Namespace)
-		err = removeServiceCAAnnotationAndSecret(ctx, r.Client, awsEBSCsiDriverOperatorService, awsEBSCsiDriverOperatorServingCert)
-		if err != nil {
-			r.Log.Error(err, "failed to remove service ca annotation and secret")
+		awsEBSCsiDriverOperatorMetricsService := manifests.AWSEBSCsiDriverOperatorMetricsService(hcp.Namespace)
+		if err = r.Get(ctx, client.ObjectKeyFromObject(awsEBSCsiDriverOperatorMetricsService), awsEBSCsiDriverOperatorMetricsService); err != nil {
+			if !apierrors.IsNotFound(err) {
+				return fmt.Errorf("failed to retrieve aws-ebs-csi-driver-operator-metrics service: %w", err)
+			}
 		}
-		if _, err = createOrUpdate(ctx, r, awsEBSCsiDriverOperatorServingCert, func() error {
-			return pki.ReconcileAWSEBSCsiDriverOperatorMetricsServingCertSecret(awsEBSCsiDriverOperatorServingCert, rootCASecret, p.OwnerRef)
-		}); err != nil {
-			return fmt.Errorf("failed to reconcile aws ebs csi driver operator serving cert: %w", err)
+
+		if hasServiceCAAnnotation := doesServiceHaveServiceCAAnnotation(awsEBSCsiDriverOperatorMetricsService); !hasServiceCAAnnotation {
+			awsEBSCsiDriverOperatorServingCert := manifests.AWSEBSCsiDriverOperatorServingCert(hcp.Namespace)
+
+			err = removeServiceCASecret(ctx, r.Client, awsEBSCsiDriverOperatorServingCert)
+			if err != nil {
+				return err
+			}
+
+			if _, err = createOrUpdate(ctx, r, awsEBSCsiDriverOperatorServingCert, func() error {
+				return pki.ReconcileAWSEBSCsiDriverOperatorMetricsServingCertSecret(awsEBSCsiDriverOperatorServingCert, rootCASecret, p.OwnerRef)
+			}); err != nil {
+				return fmt.Errorf("failed to reconcile aws ebs csi driver operator serving cert: %w", err)
+			}
 		}
 
 		awsEBSCsiDriverControllerMetricsService := manifests.AWSEBSCsiDriverControllerMetricsService(hcp.Namespace)
