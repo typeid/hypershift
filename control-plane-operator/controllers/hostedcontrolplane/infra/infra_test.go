@@ -1466,7 +1466,8 @@ func TestReconcileHCPRouterServices(t *testing.T) {
 				Name:      "router",
 				Namespace: namespace,
 				Annotations: map[string]string{
-					"service.beta.kubernetes.io/aws-load-balancer-type": "nlb",
+					"service.beta.kubernetes.io/aws-load-balancer-type":   "nlb",
+					"service.beta.kubernetes.io/aws-load-balancer-scheme": "internet-facing",
 				},
 				Labels: map[string]string{"app": "private-router"},
 			},
@@ -1488,6 +1489,7 @@ func TestReconcileHCPRouterServices(t *testing.T) {
 		return publicService(append(m, func(s *corev1.Service) {
 			s.Name = "private-router"
 			s.Annotations["service.beta.kubernetes.io/aws-load-balancer-internal"] = "true"
+			delete(s.Annotations, "service.beta.kubernetes.io/aws-load-balancer-scheme")
 		})...)
 	}
 	withCrossZoneAnnotation := func(svc *corev1.Service) {

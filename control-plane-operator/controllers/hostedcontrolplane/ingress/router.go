@@ -28,6 +28,13 @@ func ReconcileRouterService(svc *corev1.Service, internal, crossZoneLoadBalancin
 		svc.Annotations["service.beta.kubernetes.io/aws-load-balancer-type"] = "nlb"
 		if internal {
 			svc.Annotations["service.beta.kubernetes.io/aws-load-balancer-internal"] = "true"
+		} else {
+			// The AWS Load Balancer Controller (used on EKS) defaults to scheme=internal:
+			//   https://kubernetes-sigs.github.io/aws-load-balancer-controller/v2.4/guide/service/annotations/
+			// The in-tree AWS cloud provider (used on OpenShift) defaults to internet-facing:
+			//   https://cloud-provider-aws.sigs.k8s.io/service_controller/
+			// Set the annotation explicitly so the public router works on both.
+			svc.Annotations["service.beta.kubernetes.io/aws-load-balancer-scheme"] = "internet-facing"
 		}
 		if crossZoneLoadBalancingEnabled {
 			svc.Annotations["service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled"] = "true"

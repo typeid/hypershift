@@ -3,6 +3,8 @@ package ingress
 import (
 	"testing"
 
+	. "github.com/onsi/gomega"
+
 	hyperv1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 	"github.com/openshift/hypershift/support/util"
 
@@ -54,6 +56,25 @@ func TestReconcileRouterServiceAnnotations(t *testing.T) {
 	if got := svc.Annotations["service.beta.kubernetes.io/aws-load-balancer-target-node-labels"]; got != targetNodesLabel {
 		t.Fatalf("expected target node labels annotation to be '%s', got %q", targetNodesLabel, got)
 	}
+}
+
+// When reconciling an external (non-internal) AWS router service
+// it should set aws-load-balancer-scheme to internet-facing.
+func TestReconcileRouterService_WhenExternalAWS_ItShouldSetInternetFacingScheme(t *testing.T) {
+	g := NewGomegaWithT(t)
+
+	hcp := &hyperv1.HostedControlPlane{}
+	hcp.Spec.Platform.Type = hyperv1.AWSPlatform
+
+	svc := &corev1.Service{}
+
+	err := ReconcileRouterService(svc, false /* internal */, true /* cross-zone */, hcp)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	g.Expect(svc.Annotations).To(HaveKeyWithValue(
+		"service.beta.kubernetes.io/aws-load-balancer-scheme", "internet-facing"))
+	g.Expect(svc.Annotations).ToNot(HaveKey(
+		"service.beta.kubernetes.io/aws-load-balancer-internal"))
 }
 
 // Test that LoadBalancerSourceRanges is applied for external router services with allowedCIDRBlocks
