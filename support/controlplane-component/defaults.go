@@ -224,9 +224,13 @@ func (c *controlPlaneWorkload[T]) setLabels(podTemplate *corev1.PodTemplateSpec,
 
 // setControlPlaneIsolation configures tolerations and NodeAffinity rules to prefer Nodes with controlPlaneNodeLabel and clusterNodeLabel.
 func (c *controlPlaneWorkload[T]) setControlPlaneIsolation(podTemplate *corev1.PodTemplateSpec, hcp *hyperv1.HostedControlPlane) {
-	isolateAsRequestServing := false
-	if c.IsRequestServing() && hcp.Annotations[hyperv1.TopologyAnnotation] == hyperv1.DedicatedRequestServingComponentsTopology {
-		isolateAsRequestServing = true
+	topology := hcp.Annotations[hyperv1.TopologyAnnotation]
+	isolateAsRequestServing := c.IsRequestServing() && topology == hyperv1.DedicatedRequestServingComponentsTopology
+	isolateAsKataRequestServing := c.IsRequestServing() && topology == hyperv1.KataRequestServingComponentsTopology
+
+	if isolateAsKataRequestServing {
+		c.setKataIsolation(podTemplate, hcp)
+		return
 	}
 
 	// set Tolerations
@@ -324,6 +328,53 @@ func (c *controlPlaneWorkload[T]) setControlPlaneIsolation(podTemplate *corev1.P
 				},
 			},
 		}
+	}
+}
+
+const kataRuntimeClassName = "kata-fc"
+
+// setKataIsolation configures pods to run in Kata Containers (Firecracker microVMs) on shared nodes.
+// Unlike dedicated-node isolation, pods from multiple HCPs share nodes — isolation is provided by the
+// Firecracker VMM boundary rather than per-HCP node assignment.
+func (c *controlPlaneWorkload[T]) setKataIsolation(podTemplate *corev1.PodTemplateSpec, hcp *hyperv1.HostedControlPlane) {
+	podTemplate.Spec.RuntimeClassName = ptr.To(kataRuntimeClassName)
+
+	podTemplate.Spec.Tolerations = []corev1.Toleration{
+		{
+			Key:      controlPlaneLabelTolerationKey,
+			Operator: corev1.TolerationOpEqual,
+			Value:    "true",
+			Effect:   corev1.TaintEffectNoSchedule,
+		},
+		{
+			Key:      hyperv1.RequestServingComponentLabel,
+			Operator: corev1.TolerationOpEqual,
+			Value:    "true",
+			Effect:   corev1.TaintEffectNoSchedule,
+		},
+	}
+	if len(hcp.Spec.Tolerations) != 0 {
+		podTemplate.Spec.Tolerations = append(podTemplate.Spec.Tolerations, hcp.Spec.Tolerations...)
+	}
+
+	if podTemplate.Spec.Affinity == nil {
+		podTemplate.Spec.Affinity = &corev1.Affinity{}
+	}
+	if podTemplate.Spec.Affinity.NodeAffinity == nil {
+		podTemplate.Spec.Affinity.NodeAffinity = &corev1.NodeAffinity{}
+	}
+	podTemplate.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution = &corev1.NodeSelector{
+		NodeSelectorTerms: []corev1.NodeSelectorTerm{
+			{
+				MatchExpressions: []corev1.NodeSelectorRequirement{
+					{
+						Key:      "katacontainers.io/kata-runtime",
+						Operator: corev1.NodeSelectorOpIn,
+						Values:   []string{"true"},
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -679,7 +730,8 @@ func DefaultReplicas(hcp *hyperv1.HostedControlPlane, options ComponentOptions, 
 	}
 
 	// HighlyAvailable
-	if options.IsRequestServing() && hcp.Annotations[hyperv1.TopologyAnnotation] == hyperv1.DedicatedRequestServingComponentsTopology {
+	topology := hcp.Annotations[hyperv1.TopologyAnnotation]
+	if options.IsRequestServing() && (topology == hyperv1.DedicatedRequestServingComponentsTopology || topology == hyperv1.KataRequestServingComponentsTopology) {
 		return 2
 	}
 	if isEtcdComponent(name) || apiCriticalComponents.Has(name) {

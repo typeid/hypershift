@@ -245,8 +245,8 @@ const (
 	RequestServingComponentLabel = "hypershift.openshift.io/request-serving-component"
 
 	// TopologyAnnotation indicates the type of topology that should take effect for the
-	// hosted cluster's control plane workloads. Currently the only value supported is "dedicated-request-serving-components".
-	// We implicitly support shared and dedicated.
+	// hosted cluster's control plane workloads. Supported values: "dedicated-request-serving-components"
+	// and "kata-request-serving-components". We implicitly support shared and dedicated.
 	TopologyAnnotation = "hypershift.openshift.io/topology"
 
 	// HostedClusterScheduledAnnotation indicates that a hosted cluster with dedicated request serving components
@@ -256,6 +256,10 @@ const (
 	// DedicatedRequestServingComponentsTopology indicates that control plane request serving
 	// components should be scheduled on dedicated nodes in the management cluster.
 	DedicatedRequestServingComponentsTopology = "dedicated-request-serving-components"
+
+	// KataRequestServingComponentsTopology indicates that control plane request serving
+	// components should run in Kata Containers (Firecracker microVMs) on shared nodes.
+	KataRequestServingComponentsTopology = "kata-request-serving-components"
 
 	// RequestServingNodeAdditionalSelectorAnnotation is used to specify an additional node selector for
 	// request serving nodes. The value is a comma-separated list of key=value pairs.

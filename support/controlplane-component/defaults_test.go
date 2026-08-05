@@ -287,6 +287,87 @@ func generateResources() (map[string]*corev1.Secret, map[string]*corev1.ConfigMa
 	return secrets, configMaps
 }
 
+type requestServingComponent struct{}
+
+func (r *requestServingComponent) IsRequestServing() bool        { return true }
+func (r *requestServingComponent) MultiZoneSpread() bool         { return true }
+func (r *requestServingComponent) NeedsManagementKASAccess() bool { return false }
+
+func TestSetKataIsolation(t *testing.T) {
+	g := NewGomegaWithT(t)
+
+	workload := &controlPlaneWorkload[*appsv1.Deployment]{
+		name:             "kube-apiserver",
+		workloadProvider: &deploymentProvider{},
+		ComponentOptions: &requestServingComponent{},
+	}
+
+	hcp := &hyperv1.HostedControlPlane{}
+	hcp.Annotations = map[string]string{
+		hyperv1.TopologyAnnotation: hyperv1.KataRequestServingComponentsTopology,
+	}
+
+	podTemplate := &corev1.PodTemplateSpec{}
+	workload.setControlPlaneIsolation(podTemplate, hcp)
+
+	g.Expect(podTemplate.Spec.RuntimeClassName).To(Equal(ptr.To("kata-fc")))
+
+	g.Expect(podTemplate.Spec.Tolerations).To(ContainElement(corev1.Toleration{
+		Key:      "hypershift.openshift.io/request-serving-component",
+		Operator: corev1.TolerationOpEqual,
+		Value:    "true",
+		Effect:   corev1.TaintEffectNoSchedule,
+	}))
+
+	// Should NOT have per-HCP HostedClusterLabel toleration
+	for _, t := range podTemplate.Spec.Tolerations {
+		g.Expect(t.Key).NotTo(Equal(hyperv1.HostedClusterLabel))
+	}
+
+	g.Expect(podTemplate.Spec.Affinity).NotTo(BeNil())
+	g.Expect(podTemplate.Spec.Affinity.NodeAffinity).NotTo(BeNil())
+	g.Expect(podTemplate.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution).NotTo(BeNil())
+
+	terms := podTemplate.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms
+	g.Expect(terms).To(HaveLen(1))
+	g.Expect(terms[0].MatchExpressions).To(ContainElement(corev1.NodeSelectorRequirement{
+		Key:      "katacontainers.io/kata-runtime",
+		Operator: corev1.NodeSelectorOpIn,
+		Values:   []string{"true"},
+	}))
+}
+
+func TestSetControlPlaneIsolation_NonKata(t *testing.T) {
+	g := NewGomegaWithT(t)
+
+	workload := &controlPlaneWorkload[*appsv1.Deployment]{
+		name:             "kube-apiserver",
+		workloadProvider: &deploymentProvider{},
+		ComponentOptions: &requestServingComponent{},
+	}
+
+	hcp := &hyperv1.HostedControlPlane{}
+	hcp.Annotations = map[string]string{
+		hyperv1.TopologyAnnotation: hyperv1.DedicatedRequestServingComponentsTopology,
+	}
+	hcp.Namespace = "test-ns"
+	hcp.Name = "test-hcp"
+
+	podTemplate := &corev1.PodTemplateSpec{}
+	workload.setControlPlaneIsolation(podTemplate, hcp)
+
+	// Should NOT set runtimeClassName for dedicated topology
+	g.Expect(podTemplate.Spec.RuntimeClassName).To(BeNil())
+
+	// Should have per-HCP HostedClusterLabel toleration (clusterKey = namespace)
+	g.Expect(podTemplate.Spec.Tolerations).To(ContainElement(corev1.Toleration{
+		Key:      hyperv1.HostedClusterLabel,
+		Operator: corev1.TolerationOpEqual,
+		Value:    "test-ns",
+		Effect:   corev1.TaintEffectNoSchedule,
+	}))
+}
+
 func TestApplyRequestsOverrides(t *testing.T) {
 	tests := []struct {
 		name                   string
