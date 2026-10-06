@@ -298,19 +298,158 @@ func TestCreatePrivateHostedZone(t *testing.T) {
 		errorContains string
 	}{
 		{
-			name: "When zone already exists via lookup, it should return existing zone ID",
+			name: "When zone already exists on the cluster VPC, it should return existing zone ID",
 			setupMock: func(m *awsapi.MockROUTE53API) {
 				m.EXPECT().ListHostedZones(gomock.Any(), gomock.Any(), gomock.Any()).Return(
 					&route53.ListHostedZonesOutput{
-						HostedZones: []route53types.HostedZone{{
-							Id:     aws.String("/hostedzone/ZEXISTING"),
-							Name:   aws.String("test.hypershift.local."),
-							Config: &route53types.HostedZoneConfig{PrivateZone: true},
-						}},
+						HostedZones: []route53types.HostedZone{
+							{
+								Id:     aws.String("/hostedzone/ZEXISTING"),
+								Name:   aws.String("test.hypershift.local."),
+								Config: &route53types.HostedZoneConfig{PrivateZone: true},
+							},
+						},
+					}, nil,
+				)
+				m.EXPECT().GetHostedZone(gomock.Any(), &route53.GetHostedZoneInput{Id: aws.String("ZEXISTING")}, gomock.Any()).Return(
+					&route53.GetHostedZoneOutput{
+						VPCs: []route53types.VPC{{VPCId: aws.String("vpc-123"), VPCRegion: route53types.VPCRegion("us-east-1")}},
 					}, nil,
 				)
 			},
 			expectZoneID: "ZEXISTING",
+		},
+		{
+			name: "When a same-name zone exists only on another VPC, it should create a new zone",
+			setupMock: func(m *awsapi.MockROUTE53API) {
+				m.EXPECT().ListHostedZones(gomock.Any(), gomock.Any(), gomock.Any()).Return(
+					&route53.ListHostedZonesOutput{
+						HostedZones: []route53types.HostedZone{
+							{
+								Id:     aws.String("/hostedzone/ZFOREIGN"),
+								Name:   aws.String("test.hypershift.local."),
+								Config: &route53types.HostedZoneConfig{PrivateZone: true},
+							},
+						},
+					}, nil,
+				)
+				m.EXPECT().GetHostedZone(gomock.Any(), &route53.GetHostedZoneInput{Id: aws.String("ZFOREIGN")}, gomock.Any()).Return(
+					&route53.GetHostedZoneOutput{
+						VPCs: []route53types.VPC{{VPCId: aws.String("vpc-other"), VPCRegion: route53types.VPCRegion("us-east-1")}},
+					}, nil,
+				)
+				m.EXPECT().CreateHostedZone(gomock.Any(), gomock.Any(), gomock.Any()).Return(
+					&route53.CreateHostedZoneOutput{
+						HostedZone: &route53types.HostedZone{Id: aws.String("/hostedzone/ZNEW")},
+					}, nil,
+				)
+			},
+			expectZoneID: "ZNEW",
+		},
+		{
+			name: "When a same-name zone is on a VPC with the same ID in another region, it should create a new zone",
+			setupMock: func(m *awsapi.MockROUTE53API) {
+				m.EXPECT().ListHostedZones(gomock.Any(), gomock.Any(), gomock.Any()).Return(
+					&route53.ListHostedZonesOutput{
+						HostedZones: []route53types.HostedZone{
+							{
+								Id:     aws.String("/hostedzone/ZFOREIGN"),
+								Name:   aws.String("test.hypershift.local."),
+								Config: &route53types.HostedZoneConfig{PrivateZone: true},
+							},
+						},
+					}, nil,
+				)
+				m.EXPECT().GetHostedZone(gomock.Any(), &route53.GetHostedZoneInput{Id: aws.String("ZFOREIGN")}, gomock.Any()).Return(
+					&route53.GetHostedZoneOutput{
+						VPCs: []route53types.VPC{{VPCId: aws.String("vpc-123"), VPCRegion: route53types.VPCRegion("us-west-2")}},
+					}, nil,
+				)
+				m.EXPECT().CreateHostedZone(gomock.Any(), gomock.Any(), gomock.Any()).Return(
+					&route53.CreateHostedZoneOutput{
+						HostedZone: &route53types.HostedZone{Id: aws.String("/hostedzone/ZNEW")},
+					}, nil,
+				)
+			},
+			expectZoneID: "ZNEW",
+		},
+		{
+			name: "When several same-name zones exist, it should return the one on the cluster VPC",
+			setupMock: func(m *awsapi.MockROUTE53API) {
+				m.EXPECT().ListHostedZones(gomock.Any(), gomock.Any(), gomock.Any()).Return(
+					&route53.ListHostedZonesOutput{
+						HostedZones: []route53types.HostedZone{
+							{
+								Id:     aws.String("/hostedzone/ZFOREIGN"),
+								Name:   aws.String("test.hypershift.local."),
+								Config: &route53types.HostedZoneConfig{PrivateZone: true},
+							},
+							{
+								Id:     aws.String("/hostedzone/ZOURS"),
+								Name:   aws.String("test.hypershift.local."),
+								Config: &route53types.HostedZoneConfig{PrivateZone: true},
+							},
+						},
+					}, nil,
+				)
+				m.EXPECT().GetHostedZone(gomock.Any(), &route53.GetHostedZoneInput{Id: aws.String("ZFOREIGN")}, gomock.Any()).Return(
+					&route53.GetHostedZoneOutput{
+						VPCs: []route53types.VPC{{VPCId: aws.String("vpc-other"), VPCRegion: route53types.VPCRegion("us-east-1")}},
+					}, nil,
+				)
+				m.EXPECT().GetHostedZone(gomock.Any(), &route53.GetHostedZoneInput{Id: aws.String("ZOURS")}, gomock.Any()).Return(
+					&route53.GetHostedZoneOutput{
+						VPCs: []route53types.VPC{{VPCId: aws.String("vpc-123"), VPCRegion: route53types.VPCRegion("us-east-1")}},
+					}, nil,
+				)
+			},
+			expectZoneID: "ZOURS",
+		},
+		{
+			name: "When a candidate zone is deleted during lookup, it should skip it",
+			setupMock: func(m *awsapi.MockROUTE53API) {
+				m.EXPECT().ListHostedZones(gomock.Any(), gomock.Any(), gomock.Any()).Return(
+					&route53.ListHostedZonesOutput{
+						HostedZones: []route53types.HostedZone{
+							{
+								Id:     aws.String("/hostedzone/ZGONE"),
+								Name:   aws.String("test.hypershift.local."),
+								Config: &route53types.HostedZoneConfig{PrivateZone: true},
+							},
+						},
+					}, nil,
+				)
+				m.EXPECT().GetHostedZone(gomock.Any(), gomock.Any(), gomock.Any()).Return(
+					nil, &route53types.NoSuchHostedZone{},
+				)
+				m.EXPECT().CreateHostedZone(gomock.Any(), gomock.Any(), gomock.Any()).Return(
+					&route53.CreateHostedZoneOutput{
+						HostedZone: &route53types.HostedZone{Id: aws.String("/hostedzone/ZNEW")},
+					}, nil,
+				)
+			},
+			expectZoneID: "ZNEW",
+		},
+		{
+			name: "When getting a candidate zone fails, it should return error without creating",
+			setupMock: func(m *awsapi.MockROUTE53API) {
+				m.EXPECT().ListHostedZones(gomock.Any(), gomock.Any(), gomock.Any()).Return(
+					&route53.ListHostedZonesOutput{
+						HostedZones: []route53types.HostedZone{
+							{
+								Id:     aws.String("/hostedzone/ZFLAKY"),
+								Name:   aws.String("test.hypershift.local."),
+								Config: &route53types.HostedZoneConfig{PrivateZone: true},
+							},
+						},
+					}, nil,
+				)
+				m.EXPECT().GetHostedZone(gomock.Any(), gomock.Any(), gomock.Any()).Return(
+					nil, errors.New("throttling"),
+				)
+			},
+			expectError:   true,
+			errorContains: "failed to look up private hosted zone",
 		},
 		{
 			name: "When zone does not exist, it should create and return new zone ID",
@@ -381,18 +520,80 @@ func TestCreatePrivateHostedZone(t *testing.T) {
 				m.EXPECT().CreateHostedZone(gomock.Any(), gomock.Any(), gomock.Any()).Return(
 					nil, &route53types.HostedZoneAlreadyExists{},
 				)
-				// Conflict lookup finds it
+				// Conflict lookup finds it on the cluster VPC
+				m.EXPECT().ListHostedZones(gomock.Any(), gomock.Any(), gomock.Any()).Return(
+					&route53.ListHostedZonesOutput{
+						HostedZones: []route53types.HostedZone{
+							{
+								Id:     aws.String("/hostedzone/ZCONFLICT"),
+								Name:   aws.String("test.hypershift.local."),
+								Config: &route53types.HostedZoneConfig{PrivateZone: true},
+							},
+						},
+					}, nil,
+				)
+				m.EXPECT().GetHostedZone(gomock.Any(), &route53.GetHostedZoneInput{Id: aws.String("ZCONFLICT")}, gomock.Any()).Return(
+					&route53.GetHostedZoneOutput{
+						VPCs: []route53types.VPC{{VPCId: aws.String("vpc-123"), VPCRegion: route53types.VPCRegion("us-east-1")}},
+					}, nil,
+				)
+			},
+			expectZoneID: "ZCONFLICT",
+		},
+		{
+			name: "When a concurrent create wins with ConflictingDomainExists, it should return the zone on the cluster VPC",
+			setupMock: func(m *awsapi.MockROUTE53API) {
+				m.EXPECT().ListHostedZones(gomock.Any(), gomock.Any(), gomock.Any()).Return(
+					&route53.ListHostedZonesOutput{}, nil,
+				)
+				m.EXPECT().CreateHostedZone(gomock.Any(), gomock.Any(), gomock.Any()).Return(
+					nil, &route53types.ConflictingDomainExists{},
+				)
 				m.EXPECT().ListHostedZones(gomock.Any(), gomock.Any(), gomock.Any()).Return(
 					&route53.ListHostedZonesOutput{
 						HostedZones: []route53types.HostedZone{{
-							Id:     aws.String("/hostedzone/ZCONFLICT"),
+							Id:     aws.String("/hostedzone/ZWINNER"),
 							Name:   aws.String("test.hypershift.local."),
 							Config: &route53types.HostedZoneConfig{PrivateZone: true},
 						}},
 					}, nil,
 				)
+				m.EXPECT().GetHostedZone(gomock.Any(), &route53.GetHostedZoneInput{Id: aws.String("ZWINNER")}, gomock.Any()).Return(
+					&route53.GetHostedZoneOutput{
+						VPCs: []route53types.VPC{{VPCId: aws.String("vpc-123"), VPCRegion: route53types.VPCRegion("us-east-1")}},
+					}, nil,
+				)
 			},
-			expectZoneID: "ZCONFLICT",
+			expectZoneID: "ZWINNER",
+		},
+		{
+			name: "When create conflicts but no same-name zone is on the cluster VPC, it should return error",
+			setupMock: func(m *awsapi.MockROUTE53API) {
+				m.EXPECT().ListHostedZones(gomock.Any(), gomock.Any(), gomock.Any()).Return(
+					&route53.ListHostedZonesOutput{}, nil,
+				)
+				m.EXPECT().CreateHostedZone(gomock.Any(), gomock.Any(), gomock.Any()).Return(
+					nil, &route53types.ConflictingDomainExists{},
+				)
+				m.EXPECT().ListHostedZones(gomock.Any(), gomock.Any(), gomock.Any()).Return(
+					&route53.ListHostedZonesOutput{
+						HostedZones: []route53types.HostedZone{
+							{
+								Id:     aws.String("/hostedzone/ZFOREIGN"),
+								Name:   aws.String("test.hypershift.local."),
+								Config: &route53types.HostedZoneConfig{PrivateZone: true},
+							},
+						},
+					}, nil,
+				)
+				m.EXPECT().GetHostedZone(gomock.Any(), &route53.GetHostedZoneInput{Id: aws.String("ZFOREIGN")}, gomock.Any()).Return(
+					&route53.GetHostedZoneOutput{
+						VPCs: []route53types.VPC{{VPCId: aws.String("vpc-other"), VPCRegion: route53types.VPCRegion("us-east-1")}},
+					}, nil,
+				)
+			},
+			expectError:   true,
+			errorContains: "zone conflict but lookup failed",
 		},
 		{
 			name: "When create fails with non-conflict error, it should return error",

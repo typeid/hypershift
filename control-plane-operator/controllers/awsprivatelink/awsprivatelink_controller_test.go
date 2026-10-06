@@ -2242,6 +2242,11 @@ func TestEnsureLocalZone(t *testing.T) {
 							},
 						},
 					}, nil)
+				// Only adopted because it is associated with the cluster VPC.
+				mockRoute53.EXPECT().GetHostedZone(gomock.Any(), &route53sdk.GetHostedZoneInput{Id: aws.String("ZNEW")}, gomock.Any()).Return(
+					&route53sdk.GetHostedZoneOutput{
+						VPCs: []route53types.VPC{{VPCId: aws.String("vpc-123"), VPCRegion: route53types.VPCRegion("us-east-1")}},
+					}, nil)
 				mockBuilder.EXPECT().setLocalHostedZoneID("ZNEW")
 
 				return mockBuilder, mockRoute53
@@ -2279,6 +2284,11 @@ func TestEnsureLocalZone(t *testing.T) {
 								Config: &route53types.HostedZoneConfig{PrivateZone: true},
 							},
 						},
+					}, nil)
+				// Only adopted because it is associated with the cluster VPC.
+				mockRoute53.EXPECT().GetHostedZone(gomock.Any(), &route53sdk.GetHostedZoneInput{Id: aws.String("ZFOUND")}, gomock.Any()).Return(
+					&route53sdk.GetHostedZoneOutput{
+						VPCs: []route53types.VPC{{VPCId: aws.String("vpc-123"), VPCRegion: route53types.VPCRegion("us-east-1")}},
 					}, nil)
 				mockBuilder.EXPECT().setLocalHostedZoneID("ZFOUND")
 

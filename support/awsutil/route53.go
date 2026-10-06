@@ -172,12 +172,14 @@ func isAWSConflictError(err error) bool {
 }
 
 // CreatePrivateHostedZone creates a Route53 private hosted zone associated with the given VPC.
-// It uses a get-first-create-if-not-exists pattern for idempotency.
+// It uses a get-first-create-if-not-exists pattern for idempotency. An existing
+// zone is only reused when it is associated with the given VPC: Route53 allows
+// same-name private zones on other VPCs, and those belong to someone else.
 // Returns the zone ID.
 func CreatePrivateHostedZone(ctx context.Context, client awsapi.ROUTE53API, zoneName, vpcID, region string, resourceTags []hyperv1.AWSClusterResourceTag) (string, error) {
 	log := ctrl.LoggerFrom(ctx)
 
-	zoneID, err := LookupZoneID(ctx, client, zoneName)
+	zoneID, err := lookupPrivateZoneIDForVPC(ctx, client, zoneName, vpcID, region)
 	if err == nil {
 		log.Info("Private hosted zone already exists", "zone", zoneName, "zoneID", zoneID)
 		return zoneID, nil
@@ -201,7 +203,7 @@ func CreatePrivateHostedZone(ctx context.Context, client awsapi.ROUTE53API, zone
 	})
 	if err != nil {
 		if isAWSConflictError(err) {
-			zoneID, lookupErr := LookupZoneID(ctx, client, zoneName)
+			zoneID, lookupErr := lookupPrivateZoneIDForVPC(ctx, client, zoneName, vpcID, region)
 			if lookupErr != nil {
 				return "", fmt.Errorf("zone conflict but lookup failed: %w", lookupErr)
 			}
@@ -317,6 +319,44 @@ func lookupPublicZoneID(ctx context.Context, client awsapi.ROUTE53API, name stri
 		return "", fmt.Errorf("%s: %w", name, ErrZoneNotFound)
 	}
 	return cleanZoneID(aws.ToString(res.Id)), nil
+}
+
+// lookupPrivateZoneIDForVPC returns the ID of the private hosted zone with the
+// given name that is associated with the given VPC. Route53 does not allow a VPC
+// to be associated with two private zones of the same name, so at most one zone
+// can match. Returns ErrZoneNotFound if no such zone exists.
+func lookupPrivateZoneIDForVPC(ctx context.Context, client awsapi.ROUTE53API, name, vpcID, region string) (string, error) {
+	var candidates []string
+	paginator := route53.NewListHostedZonesPaginator(client, &route53.ListHostedZonesInput{})
+	for paginator.HasMorePages() {
+		resp, err := paginator.NextPage(ctx)
+		if err != nil {
+			return "", err
+		}
+		for _, zone := range resp.HostedZones {
+			isPrivate := zone.Config != nil && zone.Config.PrivateZone
+			if isPrivate && strings.TrimSuffix(aws.ToString(zone.Name), ".") == strings.TrimSuffix(name, ".") {
+				candidates = append(candidates, cleanZoneID(aws.ToString(zone.Id)))
+			}
+		}
+	}
+
+	// ListHostedZones does not return VPC associations; GetHostedZone does.
+	for _, id := range candidates {
+		output, err := client.GetHostedZone(ctx, &route53.GetHostedZoneInput{Id: aws.String(id)})
+		if err != nil {
+			if isAWSNotFoundError(err) {
+				continue
+			}
+			return "", fmt.Errorf("failed to get hosted zone %s: %w", id, err)
+		}
+		for _, vpc := range output.VPCs {
+			if aws.ToString(vpc.VPCId) == vpcID && string(vpc.VPCRegion) == region {
+				return id, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("%s in %s: %w", name, vpcID, ErrZoneNotFound)
 }
 
 // DeleteHostedZoneWithRecords drains all non-SOA/NS records from a zone and then deletes it.
