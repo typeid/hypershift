@@ -386,6 +386,7 @@ const (
 )
 
 // AWSPlatformSpec specifies configuration for clusters running on Amazon Web Services.
+// +openshift:validation:FeatureGateAwareXValidation:featureGate=AWSManagedDNS,rule="has(oldSelf.managedDNS) == has(self.managedDNS)",message="managedDNS cannot be added or removed after creation"
 type AWSPlatformSpec struct {
 	// region is the AWS region in which the cluster resides. This configures the
 	// OCP control plane cloud integrations, and is used by NodePool to resolve
@@ -504,6 +505,8 @@ type AWSPlatformSpec struct {
 	// the public and private ingress zones. For shared VPC clusters only the
 	// public ingress zone is managed, since the .hypershift.local and private
 	// ingress zones are owned by the VPC owner.
+	// managedDNS can only be set at cluster creation; it cannot be added to or
+	// removed from an existing cluster.
 	// +optional
 	// +openshift:enable:FeatureGate=AWSManagedDNS
 	ManagedDNS AWSManagedDNSSpec `json:"managedDNS,omitzero"`
@@ -1339,10 +1342,12 @@ type AWSManagedDNSSpec struct {
 	// challenge CNAME delegation back to the parent zone.
 	// Must be 1-63 characters, consist only of lowercase alphanumeric characters or
 	// hyphens, and must start and end with an alphanumeric character.
+	// ingressDomainPrefix is immutable.
 	// +required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:XValidation:rule="self.matches('^[a-z0-9]([a-z0-9-]*[a-z0-9])?$')",message="ingressDomainPrefix must consist of lowercase alphanumeric characters or '-', and must start and end with an alphanumeric character"
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="ingressDomainPrefix is immutable"
 	IngressDomainPrefix string `json:"ingressDomainPrefix,omitempty"`
 
 	// delegation configures service-side DNS delegation for certificate generation.

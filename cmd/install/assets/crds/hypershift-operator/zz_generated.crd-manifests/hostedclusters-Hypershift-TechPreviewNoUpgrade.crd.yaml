@@ -5935,6 +5935,8 @@ spec:
                           the public and private ingress zones. For shared VPC clusters only the
                           public ingress zone is managed, since the .hypershift.local and private
                           ingress zones are owned by the VPC owner.
+                          managedDNS can only be set at cluster creation; it cannot be added to or
+                          removed from an existing cluster.
                         properties:
                           delegation:
                             description: |-
@@ -5969,6 +5971,7 @@ spec:
                               challenge CNAME delegation back to the parent zone.
                               Must be 1-63 characters, consist only of lowercase alphanumeric characters or
                               hyphens, and must start and end with an alphanumeric character.
+                              ingressDomainPrefix is immutable.
                             maxLength: 63
                             minLength: 1
                             type: string
@@ -5977,6 +5980,8 @@ spec:
                                 alphanumeric characters or '-', and must start and
                                 end with an alphanumeric character
                               rule: self.matches('^[a-z0-9]([a-z0-9-]*[a-z0-9])?$')
+                            - message: ingressDomainPrefix is immutable
+                              rule: self == oldSelf
                         required:
                         - ingressDomainPrefix
                         type: object
@@ -6381,6 +6386,9 @@ spec:
                     - region
                     - rolesRef
                     type: object
+                    x-kubernetes-validations:
+                    - message: managedDNS cannot be added or removed after creation
+                      rule: has(oldSelf.managedDNS) == has(self.managedDNS)
                   azure:
                     description: azure defines azure specific settings
                     properties:
