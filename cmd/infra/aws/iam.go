@@ -653,10 +653,51 @@ func ingressPermPolicy(publicZone, privateZone string, sharedVPC bool, managedDN
 	}
 }
 
-func controlPlaneOperatorPolicy(sharedVPC bool) policyBinding {
+func controlPlaneOperatorPolicy(hostedZone string, sharedVPC bool, managedDNS bool) policyBinding {
+	hostedZone = ensureHostedZonePrefix(hostedZone)
+
+	// With managed ingress DNS the CPO creates, tags and deletes the cluster's
+	// zones at runtime, so their IDs are unknown at infra-creation time; grant
+	// zone management and record access on all hosted zones. Otherwise keep record
+	// access scoped to the create-time local zone. Shared-VPC clusters without
+	// managed DNS get no Route53 access: they reach the VPC owner's local zone via
+	// an assumed role.
+	var route53Actions, recordStatement string
+	switch {
+	case managedDNS:
+		route53Actions = `,
+						"route53:ListHostedZones",
+						"route53:GetHostedZone",
+						"route53:CreateHostedZone",
+						"route53:DeleteHostedZone",
+						"route53:ChangeTagsForResource"`
+		recordStatement = `,
+				{
+					"Effect": "Allow",
+					"Action": [
+						"route53:ChangeResourceRecordSets",
+						"route53:ListResourceRecordSets"
+					],
+					"Resource": "arn:aws:route53:::hostedzone/*"
+				}`
+	case sharedVPC:
+	default:
+		route53Actions = `,
+						"route53:ListHostedZones"`
+		recordStatement = fmt.Sprintf(`,
+				{
+					"Effect": "Allow",
+					"Action": [
+						"route53:ChangeResourceRecordSets",
+						"route53:ListResourceRecordSets"
+					],
+					"Resource": "arn:aws:route53:::%s"
+				}`, hostedZone)
+	}
+
 	var policy string
 	if sharedVPC {
-		policy = `{
+		policy = fmt.Sprintf(`{
 			"Version": "2012-10-17",
 			"Statement": [
 				{
@@ -672,27 +713,14 @@ func controlPlaneOperatorPolicy(sharedVPC bool) policyBinding {
 						"ec2:RevokeSecurityGroupEgress",
 						"ec2:DescribeSecurityGroups",
 						"ec2:DescribeVpcs",
-						"ec2:DescribeSubnets",
-						"route53:ListHostedZones",
-						"route53:GetHostedZone",
-						"route53:CreateHostedZone",
-						"route53:DeleteHostedZone",
-						"route53:ChangeTagsForResource"
+						"ec2:DescribeSubnets"%s
 					],
 					"Resource": "*"
-				},
-				{
-					"Effect": "Allow",
-					"Action": [
-						"route53:ChangeResourceRecordSets",
-						"route53:ListResourceRecordSets"
-					],
-					"Resource": "arn:aws:route53:::hostedzone/*"
-				}
+				}%s
 			]
-		}`
+		}`, route53Actions, recordStatement)
 	} else {
-		policy = `{
+		policy = fmt.Sprintf(`{
 			"Version": "2012-10-17",
 			"Statement": [
 				{
@@ -703,11 +731,6 @@ func controlPlaneOperatorPolicy(sharedVPC bool) policyBinding {
 						"ec2:ModifyVpcEndpoint",
 						"ec2:DeleteVpcEndpoints",
 						"ec2:CreateTags",
-						"route53:ListHostedZones",
-						"route53:GetHostedZone",
-						"route53:CreateHostedZone",
-						"route53:DeleteHostedZone",
-						"route53:ChangeTagsForResource",
 						"ec2:CreateSecurityGroup",
 						"ec2:AuthorizeSecurityGroupIngress",
 						"ec2:AuthorizeSecurityGroupEgress",
@@ -716,20 +739,12 @@ func controlPlaneOperatorPolicy(sharedVPC bool) policyBinding {
 						"ec2:RevokeSecurityGroupEgress",
 						"ec2:DescribeSecurityGroups",
 						"ec2:DescribeVpcs",
-						"ec2:DescribeSubnets"
+						"ec2:DescribeSubnets"%s
 					],
 					"Resource": "*"
-				},
-				{
-					"Effect": "Allow",
-					"Action": [
-						"route53:ChangeResourceRecordSets",
-						"route53:ListResourceRecordSets"
-					],
-					"Resource": "arn:aws:route53:::hostedzone/*"
-				}
+				}%s
 			]
-		}`
+		}`, route53Actions, recordStatement)
 	}
 	return policyBinding{
 		name:                 "control-plane-operator",
@@ -889,7 +904,7 @@ func (o *CreateIAMOptions) CreateOIDCResources(ctx context.Context, iamClient aw
 		&output.Roles.StorageARN:              awsEBSCSIPermPolicy,
 		&output.Roles.KubeCloudControllerARN:  kubeControllerPolicy,
 		&output.Roles.NodePoolManagementARN:   nodePoolPolicy,
-		&output.Roles.ControlPlaneOperatorARN: controlPlaneOperatorPolicy(sharedVPC),
+		&output.Roles.ControlPlaneOperatorARN: controlPlaneOperatorPolicy(o.LocalZoneID, sharedVPC, o.ManagedDNS),
 		&output.Roles.NetworkARN:              cloudNetworkConfigControllerPolicy,
 	}
 

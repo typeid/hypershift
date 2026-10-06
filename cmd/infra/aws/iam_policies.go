@@ -25,7 +25,8 @@ func APIsByDelegatedServices() (ServicesByDelegate, error) {
 		awsEBSCSIPermPolicy,
 		kubeControllerPolicy,
 		nodePoolPolicy,
-		controlPlaneOperatorPolicy(false),
+		// Managed DNS yields the superset of CPO Route53 APIs to delegate.
+		controlPlaneOperatorPolicy("fake", false, true),
 		kmsProviderPolicy("fake"),
 		cloudNetworkConfigControllerPolicy,
 	}

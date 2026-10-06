@@ -747,6 +747,80 @@ func TestIngressPermPolicy(t *testing.T) {
 	}
 }
 
+func TestControlPlaneOperatorPolicy(t *testing.T) {
+	zoneManagementActions := []string{
+		"route53:GetHostedZone",
+		"route53:CreateHostedZone",
+		"route53:DeleteHostedZone",
+		"route53:ChangeTagsForResource",
+	}
+
+	tests := []struct {
+		name                 string
+		sharedVPC            bool
+		managedDNS           bool
+		expectRecordResource string
+		expectZoneManagement bool
+	}{
+		{
+			name:                 "When managed DNS is disabled, it should scope record access to the local zone and not grant zone management",
+			expectRecordResource: "arn:aws:route53:::hostedzone/LOCAL",
+		},
+		{
+			name:      "When managed DNS is disabled on a shared-VPC cluster, it should not grant any Route53 access",
+			sharedVPC: true,
+		},
+		{
+			name:                 "When managed DNS is enabled, it should grant zone management and record access on all hosted zones",
+			managedDNS:           true,
+			expectRecordResource: "arn:aws:route53:::hostedzone/*",
+			expectZoneManagement: true,
+		},
+		{
+			name:                 "When managed DNS is enabled on a shared-VPC cluster, it should grant zone management and record access on all hosted zones",
+			sharedVPC:            true,
+			managedDNS:           true,
+			expectRecordResource: "arn:aws:route53:::hostedzone/*",
+			expectZoneManagement: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+			binding := controlPlaneOperatorPolicy("LOCAL", tt.sharedVPC, tt.managedDNS)
+
+			var doc struct {
+				Statement []struct {
+					Action   []string
+					Resource string
+				}
+			}
+			g.Expect(json.Unmarshal([]byte(binding.policy), &doc)).To(Succeed())
+
+			var actions []string
+			var recordResource string
+			for _, s := range doc.Statement {
+				actions = append(actions, s.Action...)
+				for _, a := range s.Action {
+					if a == "route53:ChangeResourceRecordSets" {
+						recordResource = s.Resource
+					}
+				}
+			}
+
+			g.Expect(recordResource).To(Equal(tt.expectRecordResource))
+			for _, a := range zoneManagementActions {
+				if tt.expectZoneManagement {
+					g.Expect(actions).To(ContainElement(a))
+				} else {
+					g.Expect(actions).NotTo(ContainElement(a))
+				}
+			}
+		})
+	}
+}
+
 func TestEnsureHostedZonePrefix(t *testing.T) {
 	tests := []struct {
 		name      string
