@@ -43325,7 +43325,8 @@ When delegation is configured, this prefix creates a DNS delegation boundary
 that separates the ingress zone from the cluster domain, enabling ACME
 challenge CNAME delegation back to the parent zone.
 Must be 1-63 characters, consist only of lowercase alphanumeric characters or
-hyphens, and must start and end with an alphanumeric character.</p>
+hyphens, and must start and end with an alphanumeric character.
+ingressDomainPrefix is immutable.</p>
 </td>
 </tr>
 <tr>
@@ -43784,7 +43785,9 @@ requiring them to be pre-created externally and passed in as zone IDs.
 For standard clusters this covers the .hypershift.local private zone and
 the public and private ingress zones. For shared VPC clusters only the
 public ingress zone is managed, since the .hypershift.local and private
-ingress zones are owned by the VPC owner.</p>
+ingress zones are owned by the VPC owner.
+managedDNS can only be set at cluster creation; it cannot be added to or
+removed from an existing cluster.</p>
 </td>
 </tr>
 </tbody>
