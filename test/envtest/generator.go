@@ -358,6 +358,7 @@ func generateOnCreateTable(onCreateTests []OnCreateTestSpec) {
 			return
 		}
 		Expect(err).ToNot(HaveOccurred())
+		deleteAfterTestIfNamed(initialObj)
 
 		if len(in.expected) > 0 {
 			gotObj := newEmptyUnstructuredFrom(initialObj)
@@ -450,6 +451,7 @@ func generateOnUpdateTable(onUpdateTests []OnUpdateTestSpec, crdFileName string)
 		Eventually(func() error {
 			return k8sClient.Create(ctx, initialObj)
 		}, "5s").Should(Succeed(), "initial object should create successfully")
+		deleteAfterTestIfNamed(initialObj)
 
 		if hasStatus && initialStatus != nil {
 			Expect(unstructured.SetNestedField(initialObj.Object, initialStatus, "status")).To(Succeed())
@@ -587,11 +589,25 @@ func newUnstructuredFrom(raw []byte) (*unstructured.Unstructured, error) {
 		return nil, fmt.Errorf("could not unmarshal raw YAML: %w", err)
 	}
 
-	u.SetGenerateName("test-")
-	u.SetName("")
+	// Keep an explicit name for singleton CRDs that validate it (for example, names that must be "cluster").
+	// Every other object gets a generated name so that test cases never collide.
+	if u.GetName() == "" {
+		u.SetGenerateName("test-")
+	}
 	u.SetNamespace("default")
 
 	return u, nil
+}
+
+// deleteAfterTestIfNamed deletes an object created with an explicit name once the current test ends,
+// since a later test case would otherwise fail to create an object with the same name.
+func deleteAfterTestIfNamed(obj *unstructured.Unstructured) {
+	if obj.GetGenerateName() != "" {
+		return
+	}
+	DeferCleanup(func() {
+		Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, obj))).To(Succeed())
+	})
 }
 
 func newEmptyUnstructuredFrom(initial *unstructured.Unstructured) *unstructured.Unstructured {

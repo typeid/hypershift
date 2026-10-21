@@ -88,6 +88,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		// Group=scheduling.hypershift.openshift.io, Version=v1alpha1
 	case schedulingv1alpha1.SchemeGroupVersion.WithResource("clustersizingconfigurations"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Scheduling().V1alpha1().ClusterSizingConfigurations().Informer()}, nil
+	case schedulingv1alpha1.SchemeGroupVersion.WithResource("controlplaneverticalautoscalingconfigurations"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Scheduling().V1alpha1().ControlPlaneVerticalAutoscalingConfigurations().Informer()}, nil
 
 	}
 

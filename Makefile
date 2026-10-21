@@ -310,6 +310,9 @@ hypershift-api: $(CONTROLLER_GEN) $(CODE_GEN)
 
 	# Generate additional CRDs.
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) paths="./api/scheduling/..." output:crd:artifacts:config=cmd/install/assets/crds/hypershift-operator
+	# ControlPlaneVerticalAutoscalingConfiguration is TechPreviewNoUpgrade only; keep it with the feature-set CRDs so the
+	# installer filters it by feature set and envtest finds it.
+	mv cmd/install/assets/crds/hypershift-operator/scheduling.hypershift.openshift.io_controlplaneverticalautoscalingconfigurations.yaml cmd/install/assets/crds/hypershift-operator/zz_generated.crd-manifests/controlplaneverticalautoscalingconfigurations-TechPreviewNoUpgrade.crd.yaml
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) paths="./api/certificates/..." output:crd:artifacts:config=cmd/install/assets/crds/hypershift-operator
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) paths="./api/auditlogpersistence/..." output:crd:artifacts:config=cmd/install/assets/crds/hypershift-operator
 

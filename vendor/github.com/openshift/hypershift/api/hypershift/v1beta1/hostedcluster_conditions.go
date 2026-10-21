@@ -307,6 +307,35 @@ const (
 // only set when spec.platform.aws.managedDNS is configured.
 const AWSManagedDNSAvailable ConditionType = "AWSManagedDNSAvailable"
 
+// ControlPlaneVerticalAutoscaling indicates whether the HostedCluster's control plane workloads are
+// resized by the Vertical Pod Autoscaler according to the management cluster's
+// ControlPlaneVerticalAutoscalingConfiguration. It is only set on HostedClusters that the configuration selects.
+// **True** means every configured workload that exists in the control plane namespace has a
+// VerticalPodAutoscaler, and none has gone without a recommendation for 30 minutes. The message lists autoscaled
+// workloads, workloads waiting for a first recommendation, active per-container floors, and configured workloads or
+// containers that were not found.
+// **False** means vertical autoscaling is not active or not working; the reason says why.
+// The condition is only set when the ControlPlaneVerticalAutoscaling feature gate is enabled on the
+// HyperShift operator.
+const ControlPlaneVerticalAutoscaling ConditionType = "ControlPlaneVerticalAutoscaling"
+
+// Reasons for the ControlPlaneVerticalAutoscaling condition.
+const (
+	// ControlPlaneAutoscalingClusterSizingActiveReason means the HostedCluster is selected, but is sized by
+	// ClusterSizingConfiguration and therefore not autoscaled.
+	ControlPlaneAutoscalingClusterSizingActiveReason = "ClusterSizingActive"
+	// ControlPlaneAutoscalingVPANotInstalledReason means the VerticalPodAutoscaler API isn't served on the management cluster.
+	ControlPlaneAutoscalingVPANotInstalledReason = "VPANotInstalled"
+	// ControlPlaneAutoscalingRecommendationMissingReason means a VerticalPodAutoscaler has had no recommendation for too long.
+	ControlPlaneAutoscalingRecommendationMissingReason = "RecommendationMissing"
+	// ControlPlaneAutoscalingVPARejectedReason means the management cluster rejected a VerticalPodAutoscaler,
+	// for example because its update mode isn't supported by the installed Vertical Pod Autoscaler.
+	ControlPlaneAutoscalingVPARejectedReason = "VPARejected"
+	// ControlPlaneAutoscalingVPAConflictReason means a configured workload isn't autoscaled because a
+	// VerticalPodAutoscaler not created by HyperShift already targets it.
+	ControlPlaneAutoscalingVPAConflictReason = "VPAConflict"
+)
+
 const (
 	AWSManagedDNSSuccessReason = "ManagedDNSSuccess"
 	AWSManagedDNSErrorReason   = "ManagedDNSError"

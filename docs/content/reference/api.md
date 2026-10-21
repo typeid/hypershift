@@ -6794,6 +6794,18 @@ or the last successful check is stale (older than 5 minutes).
 <strong>Unknown</strong> means the status cannot be determined due to true inability to inspect (e.g., no worker nodes exist or inspection cannot be performed),
 not due to missing required components.</p>
 </td>
+</tr><tr><td><p>&#34;ControlPlaneVerticalAutoscaling&#34;</p></td>
+<td><p>ControlPlaneVerticalAutoscaling indicates whether the HostedCluster&rsquo;s control plane workloads are
+resized by the Vertical Pod Autoscaler according to the management cluster&rsquo;s
+ControlPlaneVerticalAutoscalingConfiguration. It is only set on HostedClusters that the configuration selects.
+<strong>True</strong> means every configured workload that exists in the control plane namespace has a
+VerticalPodAutoscaler, and none has gone without a recommendation for 30 minutes. The message lists autoscaled
+workloads, workloads waiting for a first recommendation, active per-container floors, and configured workloads or
+containers that were not found.
+<strong>False</strong> means vertical autoscaling is not active or not working; the reason says why.
+The condition is only set when the ControlPlaneVerticalAutoscaling feature gate is enabled on the
+HyperShift operator.</p>
+</td>
 </tr><tr><td><p>&#34;DataPlaneConnectionAvailable&#34;</p></td>
 <td><p>DataPlaneConnectionAvailable indicates whether the control plane has a successful
 network connection to the data plane components.

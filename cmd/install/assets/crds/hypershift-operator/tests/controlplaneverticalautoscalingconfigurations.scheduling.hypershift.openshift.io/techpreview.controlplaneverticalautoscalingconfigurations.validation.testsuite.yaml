@@ -1,0 +1,2392 @@
+apiVersion: apiextensions.k8s.io/v1
+name: "ControlPlaneVerticalAutoscalingConfiguration validation"
+crdName: controlplaneverticalautoscalingconfigurations.scheduling.hypershift.openshift.io
+version: v1alpha1
+tests:
+  onCreate:
+  # --- Valid configurations ---
+  - name: When a full configuration is created it should pass
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchExpressions:
+            - key: example.com/autoscaled
+              operator: Exists
+        profiles:
+        - name: base
+          hostedClusters:
+            type: All
+          allWorkloads:
+            updatePolicy:
+              updateMode: InPlaceOrRecreate
+              minReplicas: 1
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            updatePolicy:
+              minReplicas: 2
+            resourcePolicy:
+              containerPolicies:
+              - containerName: kube-apiserver
+                minAllowed:
+                  cpu: 500m
+                  memory: 2Gi
+                maxAllowed:
+                  cpu: "14"
+                  memory: 56Gi
+          - resource: statefulsets
+            name: etcd
+            updatePolicy:
+              updateMode: Recreate
+            resourcePolicy:
+              containerPolicies:
+              - containerName: etcd
+                maxAllowed:
+                  memory: 32Gi
+        - name: warmup
+          hostedClusters:
+            type: Selector
+            selector:
+              matchLabels:
+                example.com/warmup: "true"
+              matchExpressions:
+              - key: example.com/tier
+                operator: DoesNotExist
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy:
+              containerPolicies:
+              - containerName: kube-apiserver
+                minAllowed:
+                  memory: 8Gi
+        - name: tier-large
+          hostedClusters:
+            type: Selector
+            selector:
+              matchExpressions:
+              - key: example.com/tier
+                operator: In
+                values: ["large", "xlarge"]
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy:
+              containerPolicies:
+              - containerName: kube-apiserver
+                minAllowed:
+                  memory: 24Gi
+                maxAllowed:
+                  memory: 112Gi
+        - name: paused
+          hostedClusters:
+            type: Selector
+            selector:
+              matchLabels:
+                control-plane-autoscaling-paused: "true"
+          allWorkloads:
+            updatePolicy:
+              updateMode: Initial
+  - name: When hostedClusters is omitted it should pass
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+  - name: When a profile only sets allWorkloads it should pass
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { minReplicas: 1 } }
+  - name: When a workload only sets updatePolicy it should pass
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            updatePolicy: { updateMode: "Off" }
+  - name: When a workload only sets resourcePolicy it should pass
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy:
+              containerPolicies:
+              - containerName: kube-apiserver
+  - name: When minReplicas is set with updateMode Off it should pass
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            updatePolicy: { updateMode: "Off", minReplicas: 3 }
+  - name: When minAllowed equals maxAllowed it should pass
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy:
+              containerPolicies:
+              - containerName: kube-apiserver
+                minAllowed: { cpu: "1", memory: 1Gi }
+                maxAllowed: { cpu: 1000m, memory: 1024Mi }
+  - name: When a Deployment and a StatefulSet have the same name it should pass
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: example
+            updatePolicy: { updateMode: Initial }
+          - resource: statefulsets
+            name: example
+            updatePolicy: { updateMode: Initial }
+  - name: When there are 16 profiles it should pass
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: p0
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p1
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p2
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p3
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p4
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p5
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p6
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p7
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p8
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p9
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p10
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p11
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p12
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p13
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p14
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p15
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+  - name: When a profile has 128 workloads it should pass
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: c0
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c1
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c2
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c3
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c4
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c5
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c6
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c7
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c8
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c9
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c10
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c11
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c12
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c13
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c14
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c15
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c16
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c17
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c18
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c19
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c20
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c21
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c22
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c23
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c24
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c25
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c26
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c27
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c28
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c29
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c30
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c31
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c32
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c33
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c34
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c35
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c36
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c37
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c38
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c39
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c40
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c41
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c42
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c43
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c44
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c45
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c46
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c47
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c48
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c49
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c50
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c51
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c52
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c53
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c54
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c55
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c56
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c57
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c58
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c59
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c60
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c61
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c62
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c63
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c64
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c65
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c66
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c67
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c68
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c69
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c70
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c71
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c72
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c73
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c74
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c75
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c76
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c77
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c78
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c79
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c80
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c81
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c82
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c83
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c84
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c85
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c86
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c87
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c88
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c89
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c90
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c91
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c92
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c93
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c94
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c95
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c96
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c97
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c98
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c99
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c100
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c101
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c102
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c103
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c104
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c105
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c106
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c107
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c108
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c109
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c110
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c111
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c112
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c113
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c114
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c115
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c116
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c117
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c118
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c119
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c120
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c121
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c122
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c123
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c124
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c125
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c126
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c127
+            updatePolicy: { updateMode: Initial }
+  - name: When a workload has 16 container policies it should pass
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy:
+              containerPolicies:
+              - containerName: c0
+              - containerName: c1
+              - containerName: c2
+              - containerName: c3
+              - containerName: c4
+              - containerName: c5
+              - containerName: c6
+              - containerName: c7
+              - containerName: c8
+              - containerName: c9
+              - containerName: c10
+              - containerName: c11
+              - containerName: c12
+              - containerName: c13
+              - containerName: c14
+              - containerName: c15
+  - name: When a matchLabels value is empty it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchLabels:
+              example.com/empty: ""
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'should be at least 1 chars long'
+  - name: When a matchExpressions value is empty it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchExpressions:
+            - key: example.com/tier
+              operator: NotIn
+              values: [""]
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'should be at least 1 chars long'
+  - name: When matchLabels and matchExpressions use one-character label values it should pass
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchLabels:
+              example.com/tier: a
+            matchExpressions:
+            - key: example.com/tier
+              operator: NotIn
+              values: ["b"]
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+  - name: When label keys use the longest valid prefix and name it should pass
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchLabels:
+              aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb: x
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+  - name: When matchExpressions values has 64 entries it should pass
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchExpressions:
+            - key: example.com/tier
+              operator: In
+              values: [v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22, v23, v24, v25, v26, v27, v28, v29, v30, v31, v32, v33, v34, v35, v36, v37, v38, v39, v40, v41, v42, v43, v44, v45, v46, v47, v48, v49, v50, v51, v52, v53, v54, v55, v56, v57, v58, v59, v60, v61, v62, v63]
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+  # --- Name and spec ---
+  - name: When the name is not cluster it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: default
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'exactly one configuration may exist and must be named ''cluster'''
+  - name: When spec is missing it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+    expectedError: 'spec: Required value'
+  # --- hostedClusters ---
+  - name: When hostedClusters type is missing it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters: {}
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'spec.hostedClusters.type: Required value'
+  - name: When hostedClusters type is invalid it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters: { type: Some }
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'spec.hostedClusters.type: Unsupported value: "Some"'
+  - name: When hostedClusters type is Selector without a selector it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters: { type: Selector }
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'selector is required when type is Selector, and forbidden otherwise'
+  - name: When hostedClusters type is All with a selector it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: All
+          selector:
+            matchLabels: { a: b }
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'selector is required when type is Selector, and forbidden otherwise'
+  - name: When the selector is empty it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            {}
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'spec.hostedClusters.selector: Invalid value: 0: spec.hostedClusters.selector in body should have at least 1 properties'
+  # --- matchLabels ---
+  - name: When matchLabels is empty it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchLabels: {}
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'spec.hostedClusters.selector.matchLabels in body should have at least 1 properties'
+  - name: When matchLabels has more than 16 entries it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchLabels:
+              k0: v
+              k1: v
+              k2: v
+              k3: v
+              k4: v
+              k5: v
+              k6: v
+              k7: v
+              k8: v
+              k9: v
+              k10: v
+              k11: v
+              k12: v
+              k13: v
+              k14: v
+              k15: v
+              k16: v
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'spec.hostedClusters.selector.matchLabels: Too many: 17: must have at most 16 items'
+  - name: When a matchLabels key is invalid it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchLabels: { "example.com/-bad": x }
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'matchLabels keys must be valid label keys'
+  - name: When a matchLabels key has an uppercase prefix it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchLabels: { "Example.com/a": x }
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'matchLabels keys must be valid label keys'
+  - name: When a matchLabels key name is longer than 63 characters it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchLabels: { "example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": x }
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'matchLabels keys must be valid label keys'
+  - name: When a matchLabels key prefix is longer than 253 characters it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchLabels: { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/a": x }
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'matchLabels keys must be valid label keys'
+  - name: When a matchLabels key prefix segment is longer than 63 characters it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchLabels: { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.com/a": x }
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'matchLabels keys must be valid label keys'
+  - name: When a matchLabels value is invalid it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchLabels: { a: "-x" }
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'label values must consist of alphanumeric characters'
+  - name: When a matchLabels value is longer than 63 characters it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchLabels: { a: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'Too long'
+  # --- matchExpressions ---
+  - name: When matchExpressions is empty it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchExpressions: []
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'spec.hostedClusters.selector.matchExpressions in body should have at least 1 items'
+  - name: When matchExpressions has more than 16 entries it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchExpressions:
+            - { key: k0, operator: Exists }
+            - { key: k1, operator: Exists }
+            - { key: k2, operator: Exists }
+            - { key: k3, operator: Exists }
+            - { key: k4, operator: Exists }
+            - { key: k5, operator: Exists }
+            - { key: k6, operator: Exists }
+            - { key: k7, operator: Exists }
+            - { key: k8, operator: Exists }
+            - { key: k9, operator: Exists }
+            - { key: k10, operator: Exists }
+            - { key: k11, operator: Exists }
+            - { key: k12, operator: Exists }
+            - { key: k13, operator: Exists }
+            - { key: k14, operator: Exists }
+            - { key: k15, operator: Exists }
+            - { key: k16, operator: Exists }
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'spec.hostedClusters.selector.matchExpressions: Too many: 17: must have at most 16 items'
+  - name: When a matchExpressions key is missing it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchExpressions: [{ operator: Exists }]
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'spec.hostedClusters.selector.matchExpressions[0].key: Required value'
+  - name: When a matchExpressions key is invalid it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchExpressions: [{ key: "a b", operator: Exists }]
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'key must be a valid label key'
+  - name: When a matchExpressions key prefix segment is longer than 63 characters it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchExpressions: [{ key: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.com/a", operator: Exists }]
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'key must be a valid label key'
+  - name: When a matchExpressions key is longer than 317 characters it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchExpressions: [{ key: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", operator: Exists }]
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'Too long'
+  - name: When a matchExpressions operator is missing it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchExpressions: [{ key: a }]
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'spec.hostedClusters.selector.matchExpressions[0].operator: Required value'
+  - name: When a matchExpressions operator is invalid it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchExpressions: [{ key: a, operator: Gt, values: ["1"] }]
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'operator: Unsupported value: "Gt"'
+  - name: When In has no values it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchExpressions: [{ key: a, operator: In }]
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'values must be set for In and NotIn, and must not be set for Exists and DoesNotExist'
+  - name: When Exists has values it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchExpressions: [{ key: a, operator: Exists, values: [x] }]
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'values must be set for In and NotIn, and must not be set for Exists and DoesNotExist'
+  - name: When values is empty it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchExpressions: [{ key: a, operator: In, values: [] }]
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'should have at least 1 items'
+  - name: When values has more than 64 entries it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchExpressions:
+            - key: a
+              operator: In
+              values: [v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22, v23, v24, v25, v26, v27, v28, v29, v30, v31, v32, v33, v34, v35, v36, v37, v38, v39, v40, v41, v42, v43, v44, v45, v46, v47, v48, v49, v50, v51, v52, v53, v54, v55, v56, v57, v58, v59, v60, v61, v62, v63, v64]
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'Too many: 65: must have at most 64 items'
+  - name: When a value is invalid it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchExpressions: [{ key: a, operator: In, values: ["x_"] }]
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'label values must consist of alphanumeric characters'
+  - name: When values are duplicated it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters:
+          type: Selector
+          selector:
+            matchExpressions: [{ key: a, operator: In, values: [x, x] }]
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'Duplicate value'
+  # --- profiles ---
+  - name: When profiles is missing it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        hostedClusters: { type: All }
+    expectedError: 'spec.profiles: Required value'
+  - name: When profiles is empty it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles: []
+    expectedError: 'spec.profiles in body should have at least 1 items'
+  - name: When there are more than 16 profiles it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: p0
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p1
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p2
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p3
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p4
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p5
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p6
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p7
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p8
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p9
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p10
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p11
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p12
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p13
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p14
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p15
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: p16
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'spec.profiles: Too many: 17: must have at most 16 items'
+  - name: When profile names are duplicated it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: same
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+        - name: same
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'profile names must be unique'
+  - name: When a profile name is missing it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'spec.profiles[0].name: Required value'
+  - name: When a profile name is not a DNS-1123 label it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: Base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'name must be a DNS-1123 label'
+  - name: When a profile name is longer than 63 characters it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'Too long'
+  - name: When a profile has no hostedClusters it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'spec.profiles[0].hostedClusters: Required value'
+  - name: When a profile's hostedClusters type is Selector without a selector it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: Selector }
+          allWorkloads: { updatePolicy: { updateMode: Initial } }
+    expectedError: 'selector is required when type is Selector, and forbidden otherwise'
+  - name: When a profile sets neither allWorkloads nor workloads it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+    expectedError: 'a profile must set allWorkloads or workloads'
+  - name: When allWorkloads is empty it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: {}
+    expectedError: 'spec.profiles[0].allWorkloads in body should have at least 1 properties'
+  # --- updatePolicy ---
+  - name: When allWorkloads.updatePolicy is empty it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: {} }
+    expectedError: 'spec.profiles[0].allWorkloads.updatePolicy in body should have at least 1 properties'
+  - name: When a workload's updatePolicy is empty it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            updatePolicy: {}
+    expectedError: 'spec.profiles[0].workloads[0].updatePolicy in body should have at least 1 properties'
+  - name: When updateMode is Auto it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { updateMode: Auto } }
+    expectedError: 'updateMode: Unsupported value: "Auto"'
+  - name: When updateMode is InPlace it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            updatePolicy: { updateMode: InPlace }
+    expectedError: 'updateMode: Unsupported value: "InPlace"'
+  - name: When minReplicas is zero it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          allWorkloads: { updatePolicy: { minReplicas: 0 } }
+    expectedError: 'should be greater than or equal to 1'
+  - name: When minReplicas is negative it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            updatePolicy: { minReplicas: -1 }
+    expectedError: 'should be greater than or equal to 1'
+  # --- workloads ---
+  - name: When workloads is empty it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads: []
+    expectedError: 'spec.profiles[0].workloads in body should have at least 1 items'
+  - name: When a profile has more than 128 workloads it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: c0
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c1
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c2
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c3
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c4
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c5
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c6
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c7
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c8
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c9
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c10
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c11
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c12
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c13
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c14
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c15
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c16
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c17
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c18
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c19
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c20
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c21
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c22
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c23
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c24
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c25
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c26
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c27
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c28
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c29
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c30
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c31
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c32
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c33
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c34
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c35
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c36
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c37
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c38
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c39
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c40
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c41
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c42
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c43
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c44
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c45
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c46
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c47
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c48
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c49
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c50
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c51
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c52
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c53
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c54
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c55
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c56
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c57
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c58
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c59
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c60
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c61
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c62
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c63
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c64
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c65
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c66
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c67
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c68
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c69
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c70
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c71
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c72
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c73
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c74
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c75
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c76
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c77
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c78
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c79
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c80
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c81
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c82
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c83
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c84
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c85
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c86
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c87
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c88
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c89
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c90
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c91
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c92
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c93
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c94
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c95
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c96
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c97
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c98
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c99
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c100
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c101
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c102
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c103
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c104
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c105
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c106
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c107
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c108
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c109
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c110
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c111
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c112
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c113
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c114
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c115
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c116
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c117
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c118
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c119
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c120
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c121
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c122
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c123
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c124
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c125
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c126
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c127
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: c128
+            updatePolicy: { updateMode: Initial }
+    expectedError: 'spec.profiles[0].workloads: Too many: 129: must have at most 128 items'
+  - name: When a workload's resource and name are duplicated it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: example
+            updatePolicy: { updateMode: Initial }
+          - resource: deployments
+            name: example
+            updatePolicy: { updateMode: "Off" }
+    expectedError: 'Duplicate value'
+  - name: When a workload's resource is missing it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - name: example
+            updatePolicy: { updateMode: Initial }
+    expectedError: 'spec.profiles[0].workloads[0].resource: Required value'
+  - name: When a workload's resource is a kind it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: Deployment
+            name: kube-apiserver
+            updatePolicy: { updateMode: Initial }
+    expectedError: 'resource: Unsupported value: "Deployment"'
+  - name: When a workload's name is missing it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            updatePolicy: { updateMode: Initial }
+    expectedError: 'spec.profiles[0].workloads[0].name: Required value'
+  - name: When a workload's name contains a dot it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube.apiserver
+            updatePolicy: { updateMode: Initial }
+    expectedError: 'name must be a DNS-1123 label'
+  - name: When a workload's name is longer than 63 characters it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            updatePolicy: { updateMode: Initial }
+    expectedError: 'Too long'
+  - name: When a workload sets neither updatePolicy nor resourcePolicy it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: example
+    expectedError: 'a workload must set updatePolicy or resourcePolicy'
+  # --- resourcePolicy ---
+  - name: When resourcePolicy has no containerPolicies it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy: {}
+    expectedError: 'spec.profiles[0].workloads[0].resourcePolicy.containerPolicies: Required value'
+  - name: When containerPolicies is empty it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy: { containerPolicies: [] }
+    expectedError: 'containerPolicies in body should have at least 1 items'
+  - name: When there are more than 16 container policies it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy:
+              containerPolicies:
+              - containerName: c0
+              - containerName: c1
+              - containerName: c2
+              - containerName: c3
+              - containerName: c4
+              - containerName: c5
+              - containerName: c6
+              - containerName: c7
+              - containerName: c8
+              - containerName: c9
+              - containerName: c10
+              - containerName: c11
+              - containerName: c12
+              - containerName: c13
+              - containerName: c14
+              - containerName: c15
+              - containerName: c16
+    expectedError: 'containerPolicies: Too many: 17: must have at most 16 items'
+  - name: When container names are duplicated it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy:
+              containerPolicies:
+              - containerName: a
+              - containerName: a
+    expectedError: 'Duplicate value'
+  - name: When containerName is missing it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy:
+              containerPolicies:
+              - minAllowed: { cpu: "1" }
+    expectedError: 'spec.profiles[0].workloads[0].resourcePolicy.containerPolicies[0].containerName: Required value'
+  - name: When containerName is a wildcard it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy:
+              containerPolicies:
+              - containerName: "*"
+    expectedError: 'containerName must be a DNS-1123 label'
+  - name: When containerName is not a DNS-1123 label it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy:
+              containerPolicies:
+              - containerName: Kube_apiserver
+    expectedError: 'containerName must be a DNS-1123 label'
+  - name: When containerName is longer than 63 characters it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy:
+              containerPolicies:
+              - containerName: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    expectedError: 'Too long'
+  # --- minAllowed and maxAllowed ---
+  - name: When minAllowed is empty it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy:
+              containerPolicies:
+              - containerName: kube-apiserver
+                minAllowed: {}
+    expectedError: 'minAllowed in body should have at least 1 properties'
+  - name: When maxAllowed is empty it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy:
+              containerPolicies:
+              - containerName: kube-apiserver
+                maxAllowed: {}
+    expectedError: 'maxAllowed in body should have at least 1 properties'
+  - name: When cpu is not a quantity it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy:
+              containerPolicies:
+              - containerName: kube-apiserver
+                minAllowed: { cpu: lots }
+    expectedError: 'cpu must be a valid quantity greater than zero'
+  - name: When cpu is an unquoted integer it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy:
+              containerPolicies:
+              - containerName: kube-apiserver
+                minAllowed: { cpu: 1 }
+    expectedError: 'must be of type string'
+  - name: When cpu is longer than 32 characters it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy:
+              containerPolicies:
+              - containerName: kube-apiserver
+                maxAllowed: { cpu: "111111111111111111111111111111111" }
+    expectedError: 'Too long'
+  - name: When memory is empty it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy:
+              containerPolicies:
+              - containerName: kube-apiserver
+                maxAllowed: { memory: "" }
+    expectedError: 'should be at least 1 chars long'
+  - name: When cpu is zero it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy:
+              containerPolicies:
+              - containerName: kube-apiserver
+                minAllowed: { cpu: "0" }
+    expectedError: 'cpu must be a valid quantity greater than zero'
+  - name: When memory is zero it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy:
+              containerPolicies:
+              - containerName: kube-apiserver
+                maxAllowed: { memory: 0Gi }
+    expectedError: 'memory must be a valid quantity greater than zero'
+  - name: When memory is negative it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy:
+              containerPolicies:
+              - containerName: kube-apiserver
+                minAllowed: { memory: -1Gi }
+    expectedError: 'memory must be a valid quantity greater than zero'
+  - name: When minAllowed cpu exceeds maxAllowed cpu it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy:
+              containerPolicies:
+              - containerName: kube-apiserver
+                minAllowed: { cpu: 1500m }
+                maxAllowed: { cpu: "1" }
+    expectedError: 'minAllowed.cpu must not exceed maxAllowed.cpu'
+  - name: When minAllowed memory exceeds maxAllowed memory it should fail
+    initial: |
+      apiVersion: scheduling.hypershift.openshift.io/v1alpha1
+      kind: ControlPlaneVerticalAutoscalingConfiguration
+      metadata:
+        name: cluster
+      spec:
+        profiles:
+        - name: base
+          hostedClusters: { type: All }
+          workloads:
+          - resource: deployments
+            name: kube-apiserver
+            resourcePolicy:
+              containerPolicies:
+              - containerName: kube-apiserver
+                minAllowed: { memory: 2Gi }
+                maxAllowed: { memory: 2000Mi }
+    expectedError: 'minAllowed.memory must not exceed maxAllowed.memory'

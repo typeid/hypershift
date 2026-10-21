@@ -500,6 +500,15 @@ func DumpCluster(ctx context.Context, opts *DumpOptions) error {
 		cmd.Run(ctx, objectType(clusterSizingConfiguration))
 	}
 
+	controlPlaneAutoscalingConfiguration := &scheduling.ControlPlaneVerticalAutoscalingConfiguration{}
+	controlPlaneAutoscalingConfigurationRegistered, err := isObjectRegistered(c, kubeDiscoveryClient, controlPlaneAutoscalingConfiguration)
+	if err != nil {
+		return err
+	}
+	if controlPlaneAutoscalingConfigurationRegistered {
+		cmd.Run(ctx, objectType(controlPlaneAutoscalingConfiguration))
+	}
+
 	resources, err := buildDumpResourceList(ctx, c, kubeDiscoveryClient, opts, localKubevirtInUse)
 	if err != nil {
 		return err

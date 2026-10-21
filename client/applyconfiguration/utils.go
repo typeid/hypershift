@@ -515,6 +515,10 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &karpenterv1.SubnetSelectorTermApplyConfiguration{}
 
 		// Group=scheduling.hypershift.openshift.io, Version=v1alpha1
+	case schedulingv1alpha1.SchemeGroupVersion.WithKind("AllWorkloadsAutoscaling"):
+		return &applyconfigurationschedulingv1alpha1.AllWorkloadsAutoscalingApplyConfiguration{}
+	case schedulingv1alpha1.SchemeGroupVersion.WithKind("AutoscalingProfile"):
+		return &applyconfigurationschedulingv1alpha1.AutoscalingProfileApplyConfiguration{}
 	case schedulingv1alpha1.SchemeGroupVersion.WithKind("ClusterSizingConfiguration"):
 		return &applyconfigurationschedulingv1alpha1.ClusterSizingConfigurationApplyConfiguration{}
 	case schedulingv1alpha1.SchemeGroupVersion.WithKind("ClusterSizingConfigurationSpec"):
@@ -523,14 +527,32 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &applyconfigurationschedulingv1alpha1.ClusterSizingConfigurationStatusApplyConfiguration{}
 	case schedulingv1alpha1.SchemeGroupVersion.WithKind("ConcurrencyConfiguration"):
 		return &applyconfigurationschedulingv1alpha1.ConcurrencyConfigurationApplyConfiguration{}
+	case schedulingv1alpha1.SchemeGroupVersion.WithKind("ContainerResourcePolicy"):
+		return &applyconfigurationschedulingv1alpha1.ContainerResourcePolicyApplyConfiguration{}
+	case schedulingv1alpha1.SchemeGroupVersion.WithKind("ControlPlaneVerticalAutoscalingConfiguration"):
+		return &applyconfigurationschedulingv1alpha1.ControlPlaneVerticalAutoscalingConfigurationApplyConfiguration{}
+	case schedulingv1alpha1.SchemeGroupVersion.WithKind("ControlPlaneVerticalAutoscalingConfigurationSpec"):
+		return &applyconfigurationschedulingv1alpha1.ControlPlaneVerticalAutoscalingConfigurationSpecApplyConfiguration{}
 	case schedulingv1alpha1.SchemeGroupVersion.WithKind("Effects"):
 		return &applyconfigurationschedulingv1alpha1.EffectsApplyConfiguration{}
+	case schedulingv1alpha1.SchemeGroupVersion.WithKind("HostedClusterSelection"):
+		return &applyconfigurationschedulingv1alpha1.HostedClusterSelectionApplyConfiguration{}
+	case schedulingv1alpha1.SchemeGroupVersion.WithKind("HostedClusterSelector"):
+		return &applyconfigurationschedulingv1alpha1.HostedClusterSelectorApplyConfiguration{}
+	case schedulingv1alpha1.SchemeGroupVersion.WithKind("LabelSelectorRequirement"):
+		return &applyconfigurationschedulingv1alpha1.LabelSelectorRequirementApplyConfiguration{}
 	case schedulingv1alpha1.SchemeGroupVersion.WithKind("Management"):
 		return &applyconfigurationschedulingv1alpha1.ManagementApplyConfiguration{}
 	case schedulingv1alpha1.SchemeGroupVersion.WithKind("NodeCountCriteria"):
 		return &applyconfigurationschedulingv1alpha1.NodeCountCriteriaApplyConfiguration{}
+	case schedulingv1alpha1.SchemeGroupVersion.WithKind("PodResourcePolicy"):
+		return &applyconfigurationschedulingv1alpha1.PodResourcePolicyApplyConfiguration{}
+	case schedulingv1alpha1.SchemeGroupVersion.WithKind("PodUpdatePolicy"):
+		return &applyconfigurationschedulingv1alpha1.PodUpdatePolicyApplyConfiguration{}
 	case schedulingv1alpha1.SchemeGroupVersion.WithKind("ResourceBasedAutoscalingConfiguration"):
 		return &applyconfigurationschedulingv1alpha1.ResourceBasedAutoscalingConfigurationApplyConfiguration{}
+	case schedulingv1alpha1.SchemeGroupVersion.WithKind("ResourceBounds"):
+		return &applyconfigurationschedulingv1alpha1.ResourceBoundsApplyConfiguration{}
 	case schedulingv1alpha1.SchemeGroupVersion.WithKind("ResourceRequest"):
 		return &applyconfigurationschedulingv1alpha1.ResourceRequestApplyConfiguration{}
 	case schedulingv1alpha1.SchemeGroupVersion.WithKind("SizeCapacity"):
@@ -539,6 +561,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &applyconfigurationschedulingv1alpha1.SizeConfigurationApplyConfiguration{}
 	case schedulingv1alpha1.SchemeGroupVersion.WithKind("TransitionDelayConfiguration"):
 		return &applyconfigurationschedulingv1alpha1.TransitionDelayConfigurationApplyConfiguration{}
+	case schedulingv1alpha1.SchemeGroupVersion.WithKind("WorkloadAutoscaling"):
+		return &applyconfigurationschedulingv1alpha1.WorkloadAutoscalingApplyConfiguration{}
 
 	}
 	return nil

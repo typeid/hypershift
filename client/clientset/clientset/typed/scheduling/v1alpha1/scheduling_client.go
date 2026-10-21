@@ -28,6 +28,7 @@ import (
 type SchedulingV1alpha1Interface interface {
 	RESTClient() rest.Interface
 	ClusterSizingConfigurationsGetter
+	ControlPlaneVerticalAutoscalingConfigurationsGetter
 }
 
 // SchedulingV1alpha1Client is used to interact with features provided by the scheduling.hypershift.openshift.io group.
@@ -37,6 +38,10 @@ type SchedulingV1alpha1Client struct {
 
 func (c *SchedulingV1alpha1Client) ClusterSizingConfigurations() ClusterSizingConfigurationInterface {
 	return newClusterSizingConfigurations(c)
+}
+
+func (c *SchedulingV1alpha1Client) ControlPlaneVerticalAutoscalingConfigurations() ControlPlaneVerticalAutoscalingConfigurationInterface {
+	return newControlPlaneVerticalAutoscalingConfigurations(c)
 }
 
 // NewForConfig creates a new SchedulingV1alpha1Client for the given config.

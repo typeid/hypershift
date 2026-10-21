@@ -25,6 +25,8 @@ import (
 type Interface interface {
 	// ClusterSizingConfigurations returns a ClusterSizingConfigurationInformer.
 	ClusterSizingConfigurations() ClusterSizingConfigurationInformer
+	// ControlPlaneVerticalAutoscalingConfigurations returns a ControlPlaneVerticalAutoscalingConfigurationInformer.
+	ControlPlaneVerticalAutoscalingConfigurations() ControlPlaneVerticalAutoscalingConfigurationInformer
 }
 
 type version struct {
@@ -41,4 +43,9 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 // ClusterSizingConfigurations returns a ClusterSizingConfigurationInformer.
 func (v *version) ClusterSizingConfigurations() ClusterSizingConfigurationInformer {
 	return &clusterSizingConfigurationInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// ControlPlaneVerticalAutoscalingConfigurations returns a ControlPlaneVerticalAutoscalingConfigurationInformer.
+func (v *version) ControlPlaneVerticalAutoscalingConfigurations() ControlPlaneVerticalAutoscalingConfigurationInformer {
+	return &controlPlaneVerticalAutoscalingConfigurationInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }

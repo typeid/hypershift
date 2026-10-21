@@ -69,6 +69,12 @@ const (
 	// owner: @typeid
 	// alpha: v0.1.84
 	AWSManagedDNS featuregate.Feature = "AWSManagedDNS"
+
+	// ControlPlaneVerticalAutoscaling enables the ControlPlaneVerticalAutoscalingConfiguration API, from which the
+	// HyperShift operator creates a VerticalPodAutoscaler per configured control plane workload.
+	// owner: @typeid
+	// alpha: v0.1.84
+	ControlPlaneVerticalAutoscaling featuregate.Feature = "ControlPlaneVerticalAutoscaling"
 )
 
 // Initialize new features here
@@ -84,6 +90,7 @@ var (
 	osStreamsFeature               = featuregates.NewFeature(OSStreams, featuregates.WithEnableForFeatureSets(configv1.TechPreviewNoUpgrade, configv1.Default))
 	deterministicLBIPFeature       = featuregates.NewFeature(DeterministicLBIP, featuregates.WithEnableForFeatureSets(configv1.TechPreviewNoUpgrade))
 	awsManagedDNSFeature           = featuregates.NewFeature(AWSManagedDNS, featuregates.WithEnableForFeatureSets(configv1.TechPreviewNoUpgrade))
+	cpVerticalAutoscalingFeature   = featuregates.NewFeature(ControlPlaneVerticalAutoscaling, featuregates.WithEnableForFeatureSets(configv1.TechPreviewNoUpgrade))
 )
 
 func init() {
@@ -97,6 +104,7 @@ func init() {
 	allFeatures.AddFeature(osStreamsFeature)
 	allFeatures.AddFeature(deterministicLBIPFeature)
 	allFeatures.AddFeature(awsManagedDNSFeature)
+	allFeatures.AddFeature(cpVerticalAutoscalingFeature)
 
 	// Default to configuring the Default featureset
 	ConfigureFeatureSet(string(configv1.Default))

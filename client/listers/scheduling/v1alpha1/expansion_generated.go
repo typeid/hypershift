@@ -20,3 +20,7 @@ package v1alpha1
 // ClusterSizingConfigurationListerExpansion allows custom methods to be added to
 // ClusterSizingConfigurationLister.
 type ClusterSizingConfigurationListerExpansion interface{}
+
+// ControlPlaneVerticalAutoscalingConfigurationListerExpansion allows custom methods to be added to
+// ControlPlaneVerticalAutoscalingConfigurationLister.
+type ControlPlaneVerticalAutoscalingConfigurationListerExpansion interface{}

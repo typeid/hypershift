@@ -120,6 +120,7 @@ nav:
     - how-to/configure-ocp-components/custom-kas-kubeconfig.md
     - how-to/configure-ocp-components/configurable-log-levels.md
   - 'Control Plane Sizing Guidance': how-to/cluster-sizing-guidance.md
+  - 'Control Plane Vertical Autoscaling': how-to/control-plane-vertical-autoscaling.md
   - how-to/per-hostedcluster-dashboard.md
   - 'Disaster Recovery':
     - how-to/disaster-recovery/index.md

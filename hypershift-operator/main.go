@@ -33,6 +33,7 @@ import (
 	pkiconfig "github.com/openshift/hypershift/control-plane-pki-operator/config"
 	etcdrecovery "github.com/openshift/hypershift/etcd-recovery"
 	"github.com/openshift/hypershift/hypershift-operator/controllers/auditlogpersistence"
+	"github.com/openshift/hypershift/hypershift-operator/controllers/controlplaneautoscaling"
 	"github.com/openshift/hypershift/hypershift-operator/controllers/etcdbackup"
 	"github.com/openshift/hypershift/hypershift-operator/controllers/hostedcluster"
 	hcmetrics "github.com/openshift/hypershift/hypershift-operator/controllers/hostedcluster/metrics"
@@ -989,6 +990,13 @@ func setupSupportControllers(ctx context.Context, mgr ctrl.Manager, opts *StartO
 		log.Info("UWM telemetry remote write controller enabled")
 	} else {
 		log.Info("UWM telemetry remote write controller disabled")
+	}
+
+	if featuregate.Gate().Enabled(featuregate.ControlPlaneVerticalAutoscaling) {
+		if err := controlplaneautoscaling.SetupWithManager(mgr); err != nil {
+			return fmt.Errorf("unable to set up control plane vertical autoscaling controller: %w", err)
+		}
+		log.Info("Control plane vertical autoscaling controller enabled")
 	}
 
 	if featuregate.Gate().Enabled(featuregate.HCPEtcdBackup) {

@@ -547,6 +547,33 @@ func TestCRDIncludeFilter(t *testing.T) {
 			expect: true,
 		},
 		{
+			name: "When path is the TechPreviewNoUpgrade ControlPlaneVerticalAutoscalingConfiguration CRD and TechPreviewNoUpgrade is false, it should be excluded",
+			path: "hypershift-operator/zz_generated.crd-manifests/controlplaneverticalautoscalingconfigurations-TechPreviewNoUpgrade.crd.yaml",
+			crd: &apiextensionsv1.CustomResourceDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "controlplaneverticalautoscalingconfigurations.scheduling.hypershift.openshift.io",
+					Annotations: map[string]string{
+						"release.openshift.io/feature-set": "TechPreviewNoUpgrade",
+					},
+				},
+			},
+			expect: false,
+		},
+		{
+			name: "When path is the TechPreviewNoUpgrade ControlPlaneVerticalAutoscalingConfiguration CRD and TechPreviewNoUpgrade is true, it should be included",
+			opts: Options{TechPreviewNoUpgrade: true},
+			path: "hypershift-operator/zz_generated.crd-manifests/controlplaneverticalautoscalingconfigurations-TechPreviewNoUpgrade.crd.yaml",
+			crd: &apiextensionsv1.CustomResourceDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "controlplaneverticalautoscalingconfigurations.scheduling.hypershift.openshift.io",
+					Annotations: map[string]string{
+						"release.openshift.io/feature-set": "TechPreviewNoUpgrade",
+					},
+				},
+			},
+			expect: true,
+		},
+		{
 			name:   "When path is a generated CRD with Default annotation and TechPreviewNoUpgrade is true, it should be excluded",
 			opts:   Options{TechPreviewNoUpgrade: true},
 			path:   "hypershift-operator/zz_generated.crd-manifests/nodepools-Default.yaml",

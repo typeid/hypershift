@@ -31,6 +31,10 @@ func (c *FakeSchedulingV1alpha1) ClusterSizingConfigurations() v1alpha1.ClusterS
 	return newFakeClusterSizingConfigurations(c)
 }
 
+func (c *FakeSchedulingV1alpha1) ControlPlaneVerticalAutoscalingConfigurations() v1alpha1.ControlPlaneVerticalAutoscalingConfigurationInterface {
+	return newFakeControlPlaneVerticalAutoscalingConfigurations(c)
+}
+
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
 func (c *FakeSchedulingV1alpha1) RESTClient() rest.Interface {
